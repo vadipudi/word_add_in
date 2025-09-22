@@ -42,11 +42,11 @@ export async function run() {
   });
 }
 
-// Get Table of Contents - most efficient approach using content controls
+// Get Table of Contents - efficient approach using content controls and proper heading detection
 export async function getTableOfContents() {
   return Word.run(async (context) => {
     try {
-      console.log("Starting getTableOfContents - using content controls approach...");
+      console.log("Starting getTableOfContents - using content controls and heading styles...");
       
       // Clear previous results
       currentTocItems = [];
@@ -56,31 +56,41 @@ export async function getTableOfContents() {
       const tocItems = [];
       
       try {
-        // Method 1: Try to get built-in Table of Contents if it exists
+        // Method 1: Try to get existing Table of Contents content controls
         const contentControls = context.document.contentControls;
         context.load(contentControls, "items");
         await context.sync();
         
         console.log(`Found ${contentControls.items.length} content controls`);
         
-        // Look for TOC content controls
         let foundTOC = false;
         for (const control of contentControls.items) {
-          context.load(control, "type, title, text");
+          context.load(control, "type, title, text, tag");
         }
         await context.sync();
         
+        // Look for TOC content controls
         for (const control of contentControls.items) {
-          if (control.title && control.title.toLowerCase().includes('table') && control.title.toLowerCase().includes('contents')) {
+          const title = control.title ? control.title.toLowerCase() : '';
+          const tag = control.tag ? control.tag.toLowerCase() : '';
+          
+          if ((title.includes('table') && title.includes('contents')) || 
+              (title.includes('toc')) ||
+              (tag.includes('toc')) ||
+              (control.type === 'RichText' && control.text && control.text.includes('Contents'))) {
+            
             console.log("Found existing TOC content control!");
             const tocText = control.text || '';
-            // Parse the existing TOC (basic approach)
+            
+            // Parse the existing TOC
             const lines = tocText.split('\n');
             lines.forEach((line, index) => {
               const trimmed = line.trim();
-              if (trimmed && !trimmed.match(/^\d+$/) && trimmed.length > 1) {
-                // Estimate level based on indentation or content
-                const level = line.length - line.trimStart().length > 10 ? 2 : 1;
+              if (trimmed && !trimmed.match(/^\d+$/) && trimmed.length > 1 && !trimmed.includes('Contents')) {
+                // Better level detection based on formatting
+                const leadingSpaces = line.length - line.trimStart().length;
+                const level = Math.min(Math.floor(leadingSpaces / 4) + 1, 6); // Convert spaces to heading level
+                
                 tocItems.push({
                   text: trimmed,
                   level: level,
@@ -94,15 +104,15 @@ export async function getTableOfContents() {
           }
         }
         
+        // Method 2: If no TOC found, scan for actual heading styles efficiently
         if (!foundTOC) {
-          console.log("No existing TOC found, scanning document structure...");
-          // Fallback: Scan document more efficiently
-          await scanForHeadingsEfficiently(context, tocItems);
+          console.log("No existing TOC found, scanning for heading styles...");
+          await scanForHeadingStyles(context, tocItems);
         }
         
       } catch (contentControlError) {
-        console.warn("Content control approach failed, using fallback:", contentControlError);
-        await scanForHeadingsEfficiently(context, tocItems);
+        console.warn("Content control approach failed, scanning for headings:", contentControlError);
+        await scanForHeadingStyles(context, tocItems);
       }
       
       console.log(`Found ${tocItems.length} headings total`);
@@ -113,66 +123,88 @@ export async function getTableOfContents() {
       
     } catch (error) {
       console.error("Error getting table of contents:", error);
-      console.error("Error details:", {
-        name: error.name,
-        message: error.message,
-        code: error.code,
-        traceMessages: error.traceMessages
-      });
-      
       document.getElementById("toc-content").innerHTML = 
-        `<p style="color: red;">Error: ${error.message}</p>
-         <p style="color: red; font-size: 12px;">Details: ${error.name} (${error.code})</p>`;
+        `<p style="color: red;">Error: ${error.message}</p>`;
       document.getElementById("toc-section").style.display = "block";
     }
   });
 }
 
-// Helper function to scan for headings more efficiently
-async function scanForHeadingsEfficiently(context, tocItems) {
-  // Only get paragraphs that are likely to be headings based on outline level
-  const body = context.document.body;
-  const ranges = body.getRange();
-  context.load(ranges, "paragraphs");
-  await context.sync();
-  
-  // Load only first few paragraphs to test the approach
-  const sampleSize = Math.min(50, ranges.paragraphs.items.length); // Limit to first 50 paragraphs
-  console.log(`Checking first ${sampleSize} paragraphs for headings...`);
-  
-  for (let i = 0; i < sampleSize; i++) {
-    const para = ranges.paragraphs.items[i];
-    context.load(para, "text, styleBuiltIn, outlineLevel");
-  }
-  
-  await context.sync();
-  
-  for (let i = 0; i < sampleSize; i++) {
-    const para = ranges.paragraphs.items[i];
-    const text = para.text ? para.text.trim() : '';
-    const style = para.styleBuiltIn ? para.styleBuiltIn.toString() : '';
-    const outlineLevel = para.outlineLevel;
+// Helper function to scan for heading styles efficiently - NO document parsing
+async function scanForHeadingStyles(context, tocItems) {
+  try {
+    console.log("Scanning for heading styles using direct style queries...");
     
-    // Only process if it's clearly a heading
-    if (text && text.length < 200 && (
-      style.includes('Heading') || 
-      style === 'Title' || 
-      (outlineLevel < 9 && text.length < 100)
-    )) {
-      const level = style === 'Title' ? 0 : 
-                   style.includes('Heading') ? getHeadingLevelSimple(style) : 
-                   outlineLevel;
-      
-      tocItems.push({
-        text: text,
-        level: level,
-        style: style,
-        index: tocItems.length
-      });
-      
-      console.log(`Found heading: "${text}" (level ${level}, style: ${style})`);
+    // Define the heading styles we want to find
+    const headingStyles = [
+      'Title',
+      'Heading 1', 
+      'Heading 2',
+      'Heading 3',
+      'Heading 4',
+      'Heading 5',
+      'Heading 6'
+    ];
+    
+    // For each heading style, search directly for that style
+    for (const styleName of headingStyles) {
+      try {
+        console.log(`Searching for style: ${styleName}`);
+        
+        // Use the style-based search instead of wildcard
+        const styleResults = context.document.body.search("", {
+          matchCase: false,
+          matchWholeWord: false,
+          matchWildcards: false,
+          // This searches for paragraphs with the specific style
+          matchStyle: styleName
+        });
+        
+        context.load(styleResults, "items");
+        await context.sync();
+        
+        console.log(`Found ${styleResults.items.length} items with style ${styleName}`);
+        
+        // Process each result
+        for (const result of styleResults.items) {
+          context.load(result, "text");
+        }
+        await context.sync();
+        
+        for (const result of styleResults.items) {
+          const text = result.text ? result.text.trim() : '';
+          if (text && text.length < 300) { // Reasonable heading length
+            const level = getHeadingLevelFromStyleName(styleName);
+            
+            tocItems.push({
+              text: text,
+              level: level,
+              style: styleName,
+              index: tocItems.length
+            });
+            
+            console.log(`Found ${styleName}: "${text}"`);
+          }
+        }
+        
+      } catch (styleError) {
+        console.warn(`Could not search for style ${styleName}:`, styleError);
+      }
     }
+    
+  } catch (error) {
+    console.error("Error in scanForHeadingStyles:", error);
   }
+}
+
+// Helper to get heading level from style name
+function getHeadingLevelFromStyleName(styleName) {
+  if (styleName === 'Title') return 0;
+  if (styleName.includes('Heading')) {
+    const match = styleName.match(/(\d+)/);
+    return match ? parseInt(match[1]) : 1;
+  }
+  return 1;
 }
 
 // Minimal test function to debug Word API
@@ -202,17 +234,29 @@ export async function testMinimal() {
   });
 }
 
-// Test AWS API function
+// Test AWS API function - GetDraftModelCollapse
 export async function testAwsApi() {
   try {
-    console.log("Testing AWS API endpoint...");
+    console.log("Testing AWS API - GetDraftModelCollapse endpoint...");
     
     // Show the API section
     document.getElementById("api-section").style.display = "block";
-    document.getElementById("api-status").textContent = "Testing...";
-    document.getElementById("api-response").textContent = "Making request...";
+    document.getElementById("api-status").textContent = "Getting draft model...";
+    document.getElementById("api-response").textContent = "Making request to GetDraftModelCollapse...";
     
-    const apiUrl = "https://k43riamgd3.execute-api.us-east-2.amazonaws.com/docs";
+    // Parameters for GetDraftModelCollapse
+    const params = {
+      key: "d074010377c21837e01f22424d97cc6e",
+      base: "usercache"
+    };
+    
+    // Build URL with query parameters
+    const baseUrl = "https://k43riamgd3.execute-api.us-east-2.amazonaws.com";
+    const endpoint = "/GetDraftModelCollapse";
+    const queryParams = new URLSearchParams(params);
+    const apiUrl = `${baseUrl}${endpoint}?${queryParams}`;
+    
+    console.log("Full API URL:", apiUrl);
     
     // Make the API call
     const response = await fetch(apiUrl, {
@@ -231,19 +275,45 @@ export async function testAwsApi() {
     // Update status
     document.getElementById("api-status").textContent = `Status: ${response.status} ${response.statusText}`;
     
-    // Try to get response content
-    let responseText;
+    // Try to get response content - only read once!
+    let responseData;
+    const contentType = response.headers.get('content-type');
+    
     try {
-      // Try JSON first
-      responseText = await response.json();
-      document.getElementById("api-response").textContent = JSON.stringify(responseText, null, 2);
-    } catch (jsonError) {
-      // If not JSON, get as text
-      responseText = await response.text();
-      document.getElementById("api-response").textContent = responseText;
+      if (contentType && contentType.includes('application/json')) {
+        // Content-Type indicates JSON
+        responseData = await response.json();
+        document.getElementById("api-response").textContent = JSON.stringify(responseData, null, 2);
+      } else {
+        // Not JSON or unknown content type - get as text
+        responseData = await response.text();
+        document.getElementById("api-response").textContent = responseData;
+      }
+      
+      // If successful and we got JSON data, show a summary
+      if (response.ok && typeof responseData === 'object') {
+        console.log("Draft model retrieved successfully:", responseData);
+        
+        // Add some summary information
+        let summary = `✅ Draft model retrieved successfully!\n\n`;
+        summary += `Parameters used:\n- Key: ${params.key}\n- Base: ${params.base}\n\n`;
+        summary += `Response data:\n${JSON.stringify(responseData, null, 2)}`;
+        
+        document.getElementById("api-response").textContent = summary;
+      }
+      
+    } catch (parseError) {
+      console.warn("Error parsing response:", parseError);
+      // If parsing fails, try to get raw text (but response might already be consumed)
+      try {
+        responseData = await response.text();
+        document.getElementById("api-response").textContent = `Response (parse error):\n${responseData}`;
+      } catch (textError) {
+        document.getElementById("api-response").textContent = `Error reading response: ${parseError.message}`;
+      }
     }
     
-    console.log("API Response data:", responseText);
+    console.log("API Response data:", responseData);
     
     if (response.ok) {
       document.getElementById("api-status").style.color = "green";
@@ -252,12 +322,12 @@ export async function testAwsApi() {
     }
     
   } catch (error) {
-    console.error("Error calling AWS API:", error);
+    console.error("Error calling GetDraftModelCollapse API:", error);
     
     document.getElementById("api-section").style.display = "block";
     document.getElementById("api-status").textContent = `Error: ${error.message}`;
     document.getElementById("api-status").style.color = "red";
-    document.getElementById("api-response").textContent = `Error details:\n${error.name}: ${error.message}\n\nThis might be due to:\n- CORS policy restrictions\n- Network connectivity issues\n- API endpoint not available\n- Authentication required`;
+    document.getElementById("api-response").textContent = `Error details:\n${error.name}: ${error.message}\n\nThis might be due to:\n- CORS policy restrictions\n- Network connectivity issues\n- API endpoint not available\n- Authentication required\n- Invalid parameters\n\nTried to call: GetDraftModelCollapse\nWith parameters:\n- key: d074010377c21837e01f22424d97cc6e\n- base: usercache`;
   }
 }
 
