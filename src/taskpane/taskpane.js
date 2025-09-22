@@ -42,7 +42,13 @@ export async function run() {
 export async function getTableOfContents() {
   return Word.run(async (context) => {
     try {
-      // Get all paragraphs in the document
+      // Get headings using built-in search
+      const searchResults = context.document.body.search("", {matchWildcards: false});
+      context.load(searchResults, "items");
+      
+      await context.sync();
+      
+      // Alternative: Get paragraphs and filter for headings only
       const paragraphs = context.document.body.paragraphs;
       context.load(paragraphs, "text, styleBuiltIn, outlineLevel");
       
@@ -50,63 +56,26 @@ export async function getTableOfContents() {
 
       const tocItems = [];
       
-      // Process paragraphs to find headings
-      for (let i = 0; i < paragraphs.items.length; i++) {
-        const paragraph = paragraphs.items[i];
+      // Process only paragraphs that are likely headings
+      paragraphs.items.forEach((paragraph, index) => {
+        const text = paragraph.text ? paragraph.text.trim() : '';
+        const style = paragraph.styleBuiltIn ? paragraph.styleBuiltIn.toString() : '';
         
-        // Check if this paragraph is a heading
-        if (isHeading(paragraph)) {
-          const level = getHeadingLevel(paragraph.styleBuiltIn, paragraph.outlineLevel);
-          const text = paragraph.text ? paragraph.text.trim() : '';
+        // Simple check for headings
+        if (text && (style.includes('Heading') || style === 'Title')) {
+          const level = getHeadingLevelSimple(style);
           
-          if (text) {
-            // Load range information for this paragraph
-            context.load(paragraph.range, "start, end");
-            
-            tocItems.push({
-              text: text,
-              level: level,
-              style: paragraph.styleBuiltIn || 'Unknown',
-              paragraph: paragraph,
-              index: i
-            });
-          }
-        }
-      }
-
-      // Sync to get range information
-      await context.sync();
-      
-      // Extract position data safely
-      const processedTocItems = [];
-      for (let i = 0; i < tocItems.length; i++) {
-        const item = tocItems[i];
-        try {
-          processedTocItems.push({
-            text: item.text,
-            level: item.level,
-            style: item.style,
-            start: item.paragraph.range.start,
-            end: item.paragraph.range.end,
-            index: i
-          });
-        } catch (rangeError) {
-          console.warn("Could not get range for item:", item.text, rangeError);
-          // Add item without range info
-          processedTocItems.push({
-            text: item.text,
-            level: item.level,
-            style: item.style,
-            start: 0,
-            end: 0,
-            index: i
+          tocItems.push({
+            text: text,
+            level: level,
+            style: style,
+            index: tocItems.length  // Use TOC index, not paragraph index
           });
         }
-      }
-      
-      // Store TOC items globally
-      currentTocItems = processedTocItems;
+      });
 
+      // Store simplified TOC data
+      currentTocItems = tocItems;
       displayTableOfContents(currentTocItems);
       
     } catch (error) {
@@ -118,27 +87,14 @@ export async function getTableOfContents() {
   });
 }
 
-// Helper function to check if paragraph is a heading
-function isHeading(paragraph) {
-  try {
-    // Check by style name
-    if (paragraph.styleBuiltIn) {
-      const style = paragraph.styleBuiltIn.toString();
-      if (style.includes("Heading") || style === "Title") {
-        return true;
-      }
-    }
-    
-    // Check by outline level (1-9 are typically headings, 10 is body text)
-    if (paragraph.outlineLevel !== undefined && paragraph.outlineLevel < 9) {
-      return true;
-    }
-    
-    return false;
-  } catch (error) {
-    console.warn("Error checking if paragraph is heading:", error);
-    return false;
+// Simplified heading level function
+function getHeadingLevelSimple(style) {
+  if (style === 'Title') return 0;
+  if (style.includes('Heading')) {
+    const match = style.match(/(\d+)/);
+    return match ? parseInt(match[1]) : 1;
   }
+  return 1;
 }
 
 // Get SharePoint Path
@@ -331,7 +287,7 @@ function updateSharePointDisplay(documentUrl, properties) {
   }
 }
 
-// Get Current Section
+// Get Current Section - simplified version
 export async function getCurrentSection() {
   return Word.run(async (context) => {
     try {
@@ -347,23 +303,20 @@ export async function getCurrentSection() {
         return;
       }
       
-      // Get current selection/cursor position
+      // Get current selection
       const selection = context.document.getSelection();
-      context.load(selection, "start, end, text");
+      context.load(selection, "text");
       
       await context.sync();
       
-      const currentPosition = selection.start;
       const selectedText = selection.text || '';
       
-      // Find which section the cursor is in
-      const currentSection = findCurrentSection(currentPosition);
-      
-      // Update display
-      updateCurrentPositionDisplay(currentSection, currentPosition, selectedText);
-      
-      // Highlight current section in TOC
-      highlightCurrentSectionInTOC(currentSection);
+      // For now, just show we're tracking (without complex position matching)
+      document.getElementById("current-section").textContent = "Tracking active (simplified mode)";
+      document.getElementById("current-position").textContent = `${currentTocItems.length} headings found`;
+      document.getElementById("cursor-info").textContent = selectedText ? 
+        `Selected: "${selectedText.substring(0, 50)}${selectedText.length > 50 ? '...' : ''}"` : 
+        "No text selected";
       
     } catch (error) {
       console.error("Error getting current section:", error);
