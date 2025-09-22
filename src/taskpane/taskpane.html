@@ -29,25 +29,44 @@
         <h2 class="ms-font-xl">Please <a target="_blank" href="https://learn.microsoft.com/office/dev/add-ins/testing/test-debug-office-add-ins#sideload-an-office-add-in-for-testing">sideload</a> your add-in to see app body.</h2>
     </section>
     <main id="app-body" class="ms-welcome__main" style="display: none;">
-        <h2 class="ms-font-xl"> Discover what Office Add-ins can do for you today! </h2>
-        <ul class="ms-List ms-welcome__features">
-            <li class="ms-ListItem">
-                <i class="ms-Icon ms-Icon--Ribbon ms-font-xl"></i>
-                <span class="ms-font-m">Achieve more with Office integration</span>
-            </li>
-            <li class="ms-ListItem">
-                <i class="ms-Icon ms-Icon--Unlock ms-font-xl"></i>
-                <span class="ms-font-m">Unlock features and functionality</span>
-            </li>
-            <li class="ms-ListItem">
-                <i class="ms-Icon ms-Icon--Design ms-font-xl"></i>
-                <span class="ms-font-m">Create and visualize like a pro</span>
-            </li>
-        </ul>
-        <p class="ms-font-l">Modify the source files, then click <b>Run</b>.</p>
-        <div role="button" id="run" class="ms-welcome__action ms-Button ms-Button--hero ms-font-xl">
-            <span class="ms-Button-label">Run</span>
+        <h2 class="ms-font-xl">Document Analysis Tool</h2>
+        
+        <!-- Control buttons -->
+        <div class="ms-welcome__features">
+            <div role="button" id="getToc" class="ms-welcome__action ms-Button ms-Button--hero ms-font-m" style="margin: 10px 0;">
+                <span class="ms-Button-label">Get Table of Contents</span>
+            </div>
+            <div role="button" id="getSharePointPath" class="ms-welcome__action ms-Button ms-Button--hero ms-font-m" style="margin: 10px 0;">
+                <span class="ms-Button-label">Get SharePoint Path</span>
+            </div>
         </div>
+
+        <!-- SharePoint Path Display -->
+        <div id="sharepoint-section" style="margin: 20px 0; display: none;">
+            <h3 class="ms-font-l">📁 SharePoint Information</h3>
+            <div class="ms-bgColor-neutralLight" style="padding: 10px; border-radius: 4px;">
+                <p><strong>File Path:</strong> <span id="sharepoint-path">Not available</span></p>
+                <p><strong>File Name:</strong> <span id="file-name">Not available</span></p>
+                <p><strong>Status:</strong> <span id="sharepoint-status">Not checked</span></p>
+            </div>
+        </div>
+
+        <!-- Table of Contents Display -->
+        <div id="toc-section" style="margin: 20px 0; display: none;">
+            <h3 class="ms-font-l">📋 Table of Contents</h3>
+            <div id="toc-container" class="ms-bgColor-neutralLight" style="padding: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;">
+                <p id="toc-content">Click "Get Table of Contents" to load...</p>
+            </div>
+        </div>
+
+        <!-- Legacy section -->
+        <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
+            <p class="ms-font-l">Original demo functionality:</p>
+            <div role="button" id="run" class="ms-welcome__action ms-Button ms-Button--primary ms-font-m">
+                <span class="ms-Button-label">Insert Hello World</span>
+            </div>
+        </div>
+        
         <p><label id="item-subject"></label></p>
     </main>
 </body>

@@ -78,3 +78,43 @@
 b {
     font-weight: bold;
 }
+
+/* Custom styles for new features */
+.toc-item {
+    transition: background-color 0.2s ease;
+}
+
+.toc-item:hover {
+    background-color: #f3f2f1 !important;
+}
+
+.ms-Button {
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.ms-Button:hover {
+    background-color: #f3f2f1;
+}
+
+#sharepoint-section, #toc-section {
+    border: 1px solid #edebe9;
+    border-radius: 6px;
+    padding: 15px;
+    background-color: #faf9f8;
+}
+
+#toc-container {
+    max-height: 300px;
+    overflow-y: auto;
+    border: 1px solid #edebe9;
+    border-radius: 4px;
+    background-color: white;
+}
+
+.level-0 { border-left-color: #0078d4 !important; font-weight: bold; }
+.level-1 { border-left-color: #107c10 !important; }
+.level-2 { border-left-color: #d83b01 !important; }
+.level-3 { border-left-color: #b146c2 !important; }
+.level-4 { border-left-color: #00bcf2 !important; }
+.level-5 { border-left-color: #8764b8 !important; }
