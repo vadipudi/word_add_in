@@ -17,9 +17,6 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./word-get-started-with-dev-kit
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -29,7 +26,6 @@ jobs:
         with:
           node-version: '18'
           cache: 'npm'
-          cache-dependency-path: './word-get-started-with-dev-kit/package-lock.json'
       
       - name: Install dependencies
         run: npm ci
@@ -43,7 +39,7 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './word-get-started-with-dev-kit/dist'
+          path: './dist'
   
   deploy:
     environment:
