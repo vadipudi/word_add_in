@@ -18,7 +18,10 @@ Office.onReady((info) => {
   document.getElementById("getToc").onclick = getTableOfContents;
   document.getElementById("testMinimal").onclick = testMinimal;
   document.getElementById("getSharePointPath").onclick = getSharePointPath;
-  document.getElementById("getCurrentSection").onclick = getCurrentSection;
+  document.getElementById("getCurrentSection").onclick = () => {
+    const selectedStyle = document.getElementById("sectionHeadingStyle").value;
+    getCurrentSection(selectedStyle);
+  };
     
     // Set up auto-tracking checkbox
     document.getElementById("autoTrack").onchange = toggleAutoTracking;
@@ -38,11 +41,11 @@ export async function run() {
   });
 }
 
-// Get Table of Contents - using Word's outline levels directly
+// Get Table of Contents - most efficient approach using content controls
 export async function getTableOfContents() {
   return Word.run(async (context) => {
     try {
-      console.log("Starting getTableOfContents with outline levels...");
+      console.log("Starting getTableOfContents - using content controls approach...");
       
       // Clear previous results
       currentTocItems = [];
@@ -51,51 +54,55 @@ export async function getTableOfContents() {
       
       const tocItems = [];
       
-      // Method 1: Try to get headings by outline level
-      const body = context.document.body;
-      const paragraphs = body.paragraphs;
-      
-      // Load only what we need - much more efficient
-      context.load(paragraphs, "items");
-      await context.sync();
-      
-      console.log(`Processing ${paragraphs.items.length} paragraphs for outline levels...`);
-      
-      // Load outline levels and text for all paragraphs at once
-      for (let i = 0; i < paragraphs.items.length; i++) {
-        context.load(paragraphs.items[i], "text, outlineLevel, styleBuiltIn");
-      }
-      
-      await context.sync();
-      
-      // Process paragraphs that have outline levels (headings)
-      paragraphs.items.forEach((paragraph, index) => {
-        try {
-          const text = paragraph.text ? paragraph.text.trim() : '';
-          const outlineLevel = paragraph.outlineLevel;
-          const style = paragraph.styleBuiltIn ? paragraph.styleBuiltIn.toString() : '';
-          
-          // Check if this is a heading (has outline level 1-9 or is a heading style)
-          if (text && (outlineLevel < 9 || style.includes('Heading') || style === 'Title')) {
-            const level = outlineLevel < 9 ? outlineLevel : getHeadingLevelSimple(style);
-            
-            tocItems.push({
-              text: text,
-              level: level,
-              style: style,
-              outlineLevel: outlineLevel,
-              index: tocItems.length
-            });
-            
-            console.log(`Found heading: "${text}" (outline: ${outlineLevel}, level: ${level}, style: ${style})`);
-          }
-        } catch (paragraphError) {
-          console.warn(`Error processing paragraph ${index}:`, paragraphError);
+      try {
+        // Method 1: Try to get built-in Table of Contents if it exists
+        const contentControls = context.document.contentControls;
+        context.load(contentControls, "items");
+        await context.sync();
+        
+        console.log(`Found ${contentControls.items.length} content controls`);
+        
+        // Look for TOC content controls
+        let foundTOC = false;
+        for (const control of contentControls.items) {
+          context.load(control, "type, title, text");
         }
-      });
-      
-      // Sort by document order
-      tocItems.sort((a, b) => a.index - b.index);
+        await context.sync();
+        
+        for (const control of contentControls.items) {
+          if (control.title && control.title.toLowerCase().includes('table') && control.title.toLowerCase().includes('contents')) {
+            console.log("Found existing TOC content control!");
+            const tocText = control.text || '';
+            // Parse the existing TOC (basic approach)
+            const lines = tocText.split('\n');
+            lines.forEach((line, index) => {
+              const trimmed = line.trim();
+              if (trimmed && !trimmed.match(/^\d+$/) && trimmed.length > 1) {
+                // Estimate level based on indentation or content
+                const level = line.length - line.trimStart().length > 10 ? 2 : 1;
+                tocItems.push({
+                  text: trimmed,
+                  level: level,
+                  style: `Heading ${level}`,
+                  index: tocItems.length
+                });
+              }
+            });
+            foundTOC = true;
+            break;
+          }
+        }
+        
+        if (!foundTOC) {
+          console.log("No existing TOC found, scanning document structure...");
+          // Fallback: Scan document more efficiently
+          await scanForHeadingsEfficiently(context, tocItems);
+        }
+        
+      } catch (contentControlError) {
+        console.warn("Content control approach failed, using fallback:", contentControlError);
+        await scanForHeadingsEfficiently(context, tocItems);
+      }
       
       console.log(`Found ${tocItems.length} headings total`);
       
@@ -118,6 +125,53 @@ export async function getTableOfContents() {
       document.getElementById("toc-section").style.display = "block";
     }
   });
+}
+
+// Helper function to scan for headings more efficiently
+async function scanForHeadingsEfficiently(context, tocItems) {
+  // Only get paragraphs that are likely to be headings based on outline level
+  const body = context.document.body;
+  const ranges = body.getRange();
+  context.load(ranges, "paragraphs");
+  await context.sync();
+  
+  // Load only first few paragraphs to test the approach
+  const sampleSize = Math.min(50, ranges.paragraphs.items.length); // Limit to first 50 paragraphs
+  console.log(`Checking first ${sampleSize} paragraphs for headings...`);
+  
+  for (let i = 0; i < sampleSize; i++) {
+    const para = ranges.paragraphs.items[i];
+    context.load(para, "text, styleBuiltIn, outlineLevel");
+  }
+  
+  await context.sync();
+  
+  for (let i = 0; i < sampleSize; i++) {
+    const para = ranges.paragraphs.items[i];
+    const text = para.text ? para.text.trim() : '';
+    const style = para.styleBuiltIn ? para.styleBuiltIn.toString() : '';
+    const outlineLevel = para.outlineLevel;
+    
+    // Only process if it's clearly a heading
+    if (text && text.length < 200 && (
+      style.includes('Heading') || 
+      style === 'Title' || 
+      (outlineLevel < 9 && text.length < 100)
+    )) {
+      const level = style === 'Title' ? 0 : 
+                   style.includes('Heading') ? getHeadingLevelSimple(style) : 
+                   outlineLevel;
+      
+      tocItems.push({
+        text: text,
+        level: level,
+        style: style,
+        index: tocItems.length
+      });
+      
+      console.log(`Found heading: "${text}" (level ${level}, style: ${style})`);
+    }
+  }
 }
 
 // Minimal test function to debug Word API
@@ -347,44 +401,142 @@ function updateSharePointDisplay(documentUrl, properties) {
   }
 }
 
-// Get Current Section - simplified version
-export async function getCurrentSection() {
+// Get Current Section - finds which section the cursor is in based on heading boundaries
+export async function getCurrentSection(sectionHeadingStyle = 'Heading 1') {
   return Word.run(async (context) => {
     try {
+      console.log(`Finding current section based on ${sectionHeadingStyle} boundaries...`);
+      
       // Show position section
       document.getElementById("position-section").style.display = "block";
       document.getElementById("current-section").textContent = "Detecting...";
       
-      // Check if we have TOC data
-      if (currentTocItems.length === 0) {
-        document.getElementById("current-section").textContent = "Please get Table of Contents first";
-        document.getElementById("current-position").textContent = "No TOC data available";
-        document.getElementById("cursor-info").textContent = "Click 'Get Table of Contents' first";
+      // Get cursor position
+      const selection = context.document.getSelection();
+      context.load(selection, "start");
+      await context.sync();
+      
+      const cursorPosition = selection.start;
+      console.log(`Cursor position: ${cursorPosition}`);
+      
+      // Find all headings of the specified level (section boundaries)
+      const sectionHeadings = await findHeadingsByStyle(context, sectionHeadingStyle);
+      console.log(`Found ${sectionHeadings.length} section headings`);
+      
+      if (sectionHeadings.length === 0) {
+        document.getElementById("current-section").textContent = `No ${sectionHeadingStyle} found`;
+        document.getElementById("current-position").textContent = "Cannot determine section";
+        document.getElementById("cursor-info").textContent = `Add some ${sectionHeadingStyle} headings to use this feature`;
         return;
       }
       
-      // Get current selection
-      const selection = context.document.getSelection();
-      context.load(selection, "text");
+      // Find which section the cursor is in
+      const currentSection = findSectionFromPosition(cursorPosition, sectionHeadings);
       
-      await context.sync();
+      // Update display
+      if (currentSection) {
+        document.getElementById("current-section").textContent = `Section: ${currentSection.title}`;
+        document.getElementById("current-position").textContent = `Position: ${cursorPosition} (in ${currentSection.title})`;
+        document.getElementById("cursor-info").textContent = `Section starts at position ${currentSection.start}`;
+      } else {
+        document.getElementById("current-section").textContent = "Before first section";
+        document.getElementById("current-position").textContent = `Position: ${cursorPosition}`;
+        document.getElementById("cursor-info").textContent = `Before first ${sectionHeadingStyle}`;
+      }
       
-      const selectedText = selection.text || '';
-      
-      // For now, just show we're tracking (without complex position matching)
-      document.getElementById("current-section").textContent = "Tracking active (simplified mode)";
-      document.getElementById("current-position").textContent = `${currentTocItems.length} headings found`;
-      document.getElementById("cursor-info").textContent = selectedText ? 
-        `Selected: "${selectedText.substring(0, 50)}${selectedText.length > 50 ? '...' : ''}"` : 
-        "No text selected";
+      return currentSection;
       
     } catch (error) {
       console.error("Error getting current section:", error);
       document.getElementById("current-section").textContent = `Error: ${error.message}`;
       document.getElementById("current-position").textContent = "Error occurred";
       document.getElementById("cursor-info").textContent = "Please try again";
+      return null;
     }
   });
+}
+
+// Helper function to find headings by style
+async function findHeadingsByStyle(context, headingStyle) {
+  const headings = [];
+  
+  try {
+    // Get document body and scan for headings efficiently
+    const body = context.document.body;
+    const paragraphs = body.paragraphs;
+    
+    // Load paragraphs metadata first
+    context.load(paragraphs, "items");
+    await context.sync();
+    
+    // Limit scan to avoid performance issues
+    const maxParagraphs = Math.min(200, paragraphs.items.length);
+    console.log(`Scanning first ${maxParagraphs} paragraphs for ${headingStyle}...`);
+    
+    // Load properties for paragraphs in batches
+    for (let i = 0; i < maxParagraphs; i++) {
+      context.load(paragraphs.items[i], "text, styleBuiltIn, getRange");
+    }
+    await context.sync();
+    
+    // Get ranges for position information
+    for (let i = 0; i < maxParagraphs; i++) {
+      const paragraph = paragraphs.items[i];
+      const style = paragraph.styleBuiltIn ? paragraph.styleBuiltIn.toString() : '';
+      
+      if (style === headingStyle || 
+          (headingStyle === 'Heading 1' && style.includes('Heading1')) ||
+          (headingStyle === 'Heading 2' && style.includes('Heading2'))) {
+        
+        const text = paragraph.text ? paragraph.text.trim() : '';
+        if (text) {
+          // Get the range to find position
+          const range = paragraph.getRange();
+          context.load(range, "start, end");
+          await context.sync();
+          
+          headings.push({
+            title: text,
+            start: range.start,
+            end: range.end,
+            style: style
+          });
+          
+          console.log(`Found section heading: "${text}" at position ${range.start}`);
+        }
+      }
+    }
+    
+  } catch (error) {
+    console.error("Error finding headings:", error);
+  }
+  
+  // Sort by position
+  headings.sort((a, b) => a.start - b.start);
+  return headings;
+}
+
+// Helper function to find which section contains a given position
+function findSectionFromPosition(cursorPosition, sectionHeadings) {
+  let currentSection = null;
+  
+  for (let i = 0; i < sectionHeadings.length; i++) {
+    const heading = sectionHeadings[i];
+    
+    // If cursor is after this heading start
+    if (cursorPosition >= heading.start) {
+      // Check if there's a next heading
+      const nextHeading = sectionHeadings[i + 1];
+      
+      // If no next heading, or cursor is before next heading
+      if (!nextHeading || cursorPosition < nextHeading.start) {
+        currentSection = heading;
+        break;
+      }
+    }
+  }
+  
+  return currentSection;
 }
 
 // Toggle auto-tracking
