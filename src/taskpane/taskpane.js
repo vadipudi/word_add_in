@@ -42,34 +42,31 @@ export async function run() {
 export async function getTableOfContents() {
   return Word.run(async (context) => {
     try {
-      // Get all headings in the document
-      const headings = context.document.body.paragraphs;
-      context.load(headings, "text, styleBuiltIn, outlineLevel");
+      // Get all paragraphs in the document
+      const paragraphs = context.document.body.paragraphs;
+      context.load(paragraphs, "text, styleBuiltIn, outlineLevel");
       
       await context.sync();
 
       const tocItems = [];
       
-      for (let i = 0; i < headings.items.length; i++) {
-        const paragraph = headings.items[i];
+      // Process paragraphs to find headings
+      for (let i = 0; i < paragraphs.items.length; i++) {
+        const paragraph = paragraphs.items[i];
         
         // Check if this paragraph is a heading
-        if (paragraph.styleBuiltIn && 
-            (paragraph.styleBuiltIn.includes("Heading") || 
-             paragraph.styleBuiltIn === "Title" ||
-             paragraph.outlineLevel < 9)) {
-          
+        if (isHeading(paragraph)) {
           const level = getHeadingLevel(paragraph.styleBuiltIn, paragraph.outlineLevel);
-          const text = paragraph.text.trim();
+          const text = paragraph.text ? paragraph.text.trim() : '';
           
           if (text) {
-            // Load range information for position tracking
+            // Load range information for this paragraph
             context.load(paragraph.range, "start, end");
             
             tocItems.push({
               text: text,
               level: level,
-              style: paragraph.styleBuiltIn,
+              style: paragraph.styleBuiltIn || 'Unknown',
               paragraph: paragraph,
               index: i
             });
@@ -77,17 +74,38 @@ export async function getTableOfContents() {
         }
       }
 
+      // Sync to get range information
       await context.sync();
       
-      // Store TOC items with position data for tracking
-      currentTocItems = tocItems.map(item => ({
-        text: item.text,
-        level: item.level,
-        style: item.style,
-        start: item.paragraph.range.start,
-        end: item.paragraph.range.end,
-        index: item.index
-      }));
+      // Extract position data safely
+      const processedTocItems = [];
+      for (let i = 0; i < tocItems.length; i++) {
+        const item = tocItems[i];
+        try {
+          processedTocItems.push({
+            text: item.text,
+            level: item.level,
+            style: item.style,
+            start: item.paragraph.range.start,
+            end: item.paragraph.range.end,
+            index: i
+          });
+        } catch (rangeError) {
+          console.warn("Could not get range for item:", item.text, rangeError);
+          // Add item without range info
+          processedTocItems.push({
+            text: item.text,
+            level: item.level,
+            style: item.style,
+            start: 0,
+            end: 0,
+            index: i
+          });
+        }
+      }
+      
+      // Store TOC items globally
+      currentTocItems = processedTocItems;
 
       displayTableOfContents(currentTocItems);
       
@@ -98,6 +116,29 @@ export async function getTableOfContents() {
       document.getElementById("toc-section").style.display = "block";
     }
   });
+}
+
+// Helper function to check if paragraph is a heading
+function isHeading(paragraph) {
+  try {
+    // Check by style name
+    if (paragraph.styleBuiltIn) {
+      const style = paragraph.styleBuiltIn.toString();
+      if (style.includes("Heading") || style === "Title") {
+        return true;
+      }
+    }
+    
+    // Check by outline level (1-9 are typically headings, 10 is body text)
+    if (paragraph.outlineLevel !== undefined && paragraph.outlineLevel < 9) {
+      return true;
+    }
+    
+    return false;
+  } catch (error) {
+    console.warn("Error checking if paragraph is heading:", error);
+    return false;
+  }
 }
 
 // Get SharePoint Path
@@ -159,14 +200,29 @@ async function getDocumentUrl() {
 
 // Helper function to determine heading level
 function getHeadingLevel(styleBuiltIn, outlineLevel) {
-  if (styleBuiltIn) {
-    if (styleBuiltIn === "Title") return 0;
-    if (styleBuiltIn.includes("Heading")) {
-      const match = styleBuiltIn.match(/Heading(\d+)/);
-      return match ? parseInt(match[1]) : 1;
+  try {
+    if (styleBuiltIn) {
+      const style = styleBuiltIn.toString();
+      if (style === "Title") return 0;
+      if (style.includes("Heading")) {
+        const match = style.match(/Heading(\d+)/);
+        if (match && match[1]) {
+          return parseInt(match[1]);
+        }
+      }
     }
+    
+    // Fallback to outline level
+    if (outlineLevel !== undefined && outlineLevel < 9) {
+      return outlineLevel;
+    }
+    
+    // Default fallback
+    return 1;
+  } catch (error) {
+    console.warn("Error determining heading level:", error);
+    return 1;
   }
-  return outlineLevel < 9 ? outlineLevel : 1;
 }
 
 // Display table of contents
@@ -215,22 +271,34 @@ function displayTableOfContents(tocItems) {
 
 // Navigate to a specific section
 async function navigateToSection(index) {
-  if (index < 0 || index >= currentTocItems.length) return;
+  if (index < 0 || index >= currentTocItems.length) {
+    console.warn("Invalid section index:", index);
+    return;
+  }
   
   return Word.run(async (context) => {
     try {
-      // Create a range at the heading position
-      const range = context.document.body.getRange();
-      range.start = currentTocItems[index].start;
-      range.end = currentTocItems[index].start + 1;
+      const targetItem = currentTocItems[index];
       
-      // Select the range to navigate to it
-      range.select();
-      
-      await context.sync();
-      
-      // Update current section display
-      setTimeout(() => getCurrentSection(), 500);
+      // Only navigate if we have valid position data
+      if (targetItem.start !== undefined && targetItem.start >= 0) {
+        // Create a range at the heading position
+        const range = context.document.body.getRange();
+        range.start = targetItem.start;
+        range.end = targetItem.start + Math.max(1, targetItem.text.length);
+        
+        // Select the range to navigate to it
+        range.select();
+        
+        await context.sync();
+        
+        // Update current section display after a short delay
+        setTimeout(() => {
+          getCurrentSection();
+        }, 500);
+      } else {
+        console.warn("No position data available for section:", targetItem.text);
+      }
       
     } catch (error) {
       console.error("Error navigating to section:", error);
@@ -271,6 +339,14 @@ export async function getCurrentSection() {
       document.getElementById("position-section").style.display = "block";
       document.getElementById("current-section").textContent = "Detecting...";
       
+      // Check if we have TOC data
+      if (currentTocItems.length === 0) {
+        document.getElementById("current-section").textContent = "Please get Table of Contents first";
+        document.getElementById("current-position").textContent = "No TOC data available";
+        document.getElementById("cursor-info").textContent = "Click 'Get Table of Contents' first";
+        return;
+      }
+      
       // Get current selection/cursor position
       const selection = context.document.getSelection();
       context.load(selection, "start, end, text");
@@ -278,12 +354,13 @@ export async function getCurrentSection() {
       await context.sync();
       
       const currentPosition = selection.start;
+      const selectedText = selection.text || '';
       
       // Find which section the cursor is in
       const currentSection = findCurrentSection(currentPosition);
       
       // Update display
-      updateCurrentPositionDisplay(currentSection, currentPosition, selection.text);
+      updateCurrentPositionDisplay(currentSection, currentPosition, selectedText);
       
       // Highlight current section in TOC
       highlightCurrentSectionInTOC(currentSection);
@@ -291,6 +368,8 @@ export async function getCurrentSection() {
     } catch (error) {
       console.error("Error getting current section:", error);
       document.getElementById("current-section").textContent = `Error: ${error.message}`;
+      document.getElementById("current-position").textContent = "Error occurred";
+      document.getElementById("cursor-info").textContent = "Please try again";
     }
   });
 }
