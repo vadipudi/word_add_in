@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Word Add-in - Hello World</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            line-height: 1.6;
+            color: #333;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+        .logo {
+            width: 64px;
+            height: 64px;
+            margin-bottom: 20px;
+        }
+        .card {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 30px;
+            margin: 20px 0;
+            border-left: 4px solid #0078d4;
+        }
+        .btn {
+            display: inline-block;
+            background: #0078d4;
+            color: white;
+            padding: 12px 24px;
+            text-decoration: none;
+            border-radius: 4px;
+            margin: 10px 10px 10px 0;
+            transition: background 0.3s;
+        }
+        .btn:hover {
+            background: #106ebe;
+        }
+        .code {
+            background: #f1f3f4;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .instructions {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="../assets/icon-64.png" alt="Word Add-in Logo" class="logo">
+        <h1>Word Add-in - Hello World</h1>
+        <p>A simple Office Add-in for Microsoft Word</p>
+    </div>
+
+    <div class="card">
+        <h2>🚀 Add-in Resources</h2>
+        <p>Your Word add-in is successfully deployed! Use these resources:</p>
+        
+        <a href="./manifest.xml" class="btn">📄 Download Manifest</a>
+        <a href="./taskpane.html" class="btn">🖼️ View Taskpane</a>
+    </div>
+
+    <div class="instructions">
+        <h3>📋 How to Use This Add-in</h3>
+        <ol>
+            <li>Open <strong>Word Online</strong> at <a href="https://office.com" target="_blank">office.com</a></li>
+            <li>Create or open a document</li>
+            <li>Go to <strong>Insert</strong> → <strong>Add-ins</strong> → <strong>Upload My Add-in</strong></li>
+            <li>Upload the <span class="code">manifest.xml</span> file from this page</li>
+            <li>Look for the "Commands Group" in Word's ribbon</li>
+            <li>Click "Show Taskpane" to open your add-in!</li>
+        </ol>
+    </div>
+
+    <div class="card">
+        <h3>🔗 Direct Links</h3>
+        <ul>
+            <li><strong>Manifest URL:</strong> <span class="code">https://vadipudi.github.io/word_add_in/manifest.xml</span></li>
+            <li><strong>Taskpane URL:</strong> <span class="code">https://vadipudi.github.io/word_add_in/taskpane.html</span></li>
+        </ul>
+    </div>
+
+    <div class="card">
+        <h3>🛠️ Development</h3>
+        <p>This add-in was built with:</p>
+        <ul>
+            <li>Office JavaScript API</li>
+            <li>HTML, CSS, and JavaScript</li>
+            <li>Webpack for bundling</li>
+            <li>GitHub Pages for hosting</li>
+        </ul>
+    </div>
+</body>
+</html>
