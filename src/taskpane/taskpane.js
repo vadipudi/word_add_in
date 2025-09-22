@@ -14,11 +14,11 @@ Office.onReady((info) => {
     document.getElementById("sideload-msg").style.display = "none";
     document.getElementById("app-body").style.display = "flex";
     
-    // Set up event handlers
-    document.getElementById("run").onclick = run;
-    document.getElementById("getToc").onclick = getTableOfContents;
-    document.getElementById("getSharePointPath").onclick = getSharePointPath;
-    document.getElementById("getCurrentSection").onclick = getCurrentSection;
+      // Add event listeners
+  document.getElementById("getToc").onclick = getTableOfContents;
+  document.getElementById("testMinimal").onclick = testMinimal;
+  document.getElementById("getSharePointPath").onclick = getSharePointPath;
+  document.getElementById("getCurrentSection").onclick = getCurrentSection;
     
     // Set up auto-tracking checkbox
     document.getElementById("autoTrack").onchange = toggleAutoTracking;
@@ -38,51 +38,111 @@ export async function run() {
   });
 }
 
-// Get Table of Contents
+// Get Table of Contents - using Word's outline levels directly
 export async function getTableOfContents() {
   return Word.run(async (context) => {
     try {
-      // Get headings using built-in search
-      const searchResults = context.document.body.search("", {matchWildcards: false});
-      context.load(searchResults, "items");
+      console.log("Starting getTableOfContents with outline levels...");
       
-      await context.sync();
+      // Clear previous results
+      currentTocItems = [];
+      document.getElementById("toc-content").innerHTML = "Loading...";
+      document.getElementById("toc-section").style.display = "block";
       
-      // Alternative: Get paragraphs and filter for headings only
-      const paragraphs = context.document.body.paragraphs;
-      context.load(paragraphs, "text, styleBuiltIn, outlineLevel");
-      
-      await context.sync();
-
       const tocItems = [];
       
-      // Process only paragraphs that are likely headings
+      // Method 1: Try to get headings by outline level
+      const body = context.document.body;
+      const paragraphs = body.paragraphs;
+      
+      // Load only what we need - much more efficient
+      context.load(paragraphs, "items");
+      await context.sync();
+      
+      console.log(`Processing ${paragraphs.items.length} paragraphs for outline levels...`);
+      
+      // Load outline levels and text for all paragraphs at once
+      for (let i = 0; i < paragraphs.items.length; i++) {
+        context.load(paragraphs.items[i], "text, outlineLevel, styleBuiltIn");
+      }
+      
+      await context.sync();
+      
+      // Process paragraphs that have outline levels (headings)
       paragraphs.items.forEach((paragraph, index) => {
-        const text = paragraph.text ? paragraph.text.trim() : '';
-        const style = paragraph.styleBuiltIn ? paragraph.styleBuiltIn.toString() : '';
-        
-        // Simple check for headings
-        if (text && (style.includes('Heading') || style === 'Title')) {
-          const level = getHeadingLevelSimple(style);
+        try {
+          const text = paragraph.text ? paragraph.text.trim() : '';
+          const outlineLevel = paragraph.outlineLevel;
+          const style = paragraph.styleBuiltIn ? paragraph.styleBuiltIn.toString() : '';
           
-          tocItems.push({
-            text: text,
-            level: level,
-            style: style,
-            index: tocItems.length  // Use TOC index, not paragraph index
-          });
+          // Check if this is a heading (has outline level 1-9 or is a heading style)
+          if (text && (outlineLevel < 9 || style.includes('Heading') || style === 'Title')) {
+            const level = outlineLevel < 9 ? outlineLevel : getHeadingLevelSimple(style);
+            
+            tocItems.push({
+              text: text,
+              level: level,
+              style: style,
+              outlineLevel: outlineLevel,
+              index: tocItems.length
+            });
+            
+            console.log(`Found heading: "${text}" (outline: ${outlineLevel}, level: ${level}, style: ${style})`);
+          }
+        } catch (paragraphError) {
+          console.warn(`Error processing paragraph ${index}:`, paragraphError);
         }
       });
-
-      // Store simplified TOC data
+      
+      // Sort by document order
+      tocItems.sort((a, b) => a.index - b.index);
+      
+      console.log(`Found ${tocItems.length} headings total`);
+      
+      // Store TOC data
       currentTocItems = tocItems;
       displayTableOfContents(currentTocItems);
       
     } catch (error) {
       console.error("Error getting table of contents:", error);
+      console.error("Error details:", {
+        name: error.name,
+        message: error.message,
+        code: error.code,
+        traceMessages: error.traceMessages
+      });
+      
       document.getElementById("toc-content").innerHTML = 
-        `<p style="color: red;">Error: ${error.message}</p>`;
+        `<p style="color: red;">Error: ${error.message}</p>
+         <p style="color: red; font-size: 12px;">Details: ${error.name} (${error.code})</p>`;
       document.getElementById("toc-section").style.display = "block";
+    }
+  });
+}
+
+// Minimal test function to debug Word API
+export async function testMinimal() {
+  return Word.run(async (context) => {
+    try {
+      console.log("Testing minimal Word API access...");
+      
+      // Just try to get the document body
+      const body = context.document.body;
+      context.load(body, "text");
+      
+      await context.sync();
+      
+      console.log("Body text length:", body.text.length);
+      console.log("First 100 characters:", body.text.substring(0, 100));
+      
+      document.getElementById("toc-content").innerHTML = 
+        `<p style="color: green;">✅ Minimal test passed!</p>
+         <p>Document has ${body.text.length} characters</p>`;
+      
+    } catch (error) {
+      console.error("Minimal test failed:", error);
+      document.getElementById("toc-content").innerHTML = 
+        `<p style="color: red;">❌ Minimal test failed: ${error.message}</p>`;
     }
   });
 }
