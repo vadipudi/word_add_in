@@ -42,61 +42,50 @@ export async function run() {
   });
 }
 
-// Get Table of Contents - efficient approach using content controls and proper heading detection
+// Get Table of Contents - most efficient approach using content controls
 export async function getTableOfContents() {
   return Word.run(async (context) => {
     try {
-      console.log("Starting getTableOfContents - using content controls and heading styles...");
-
+      console.log("Starting getTableOfContents - using content controls approach...");
+      
       // Clear previous results
       currentTocItems = [];
       document.getElementById("toc-content").innerHTML = "Loading...";
       document.getElementById("toc-section").style.display = "block";
-
+      
       const tocItems = [];
-
+      
       try {
-        // Method 1: Try to get existing Table of Contents content controls
+        // Method 1: Try to get built-in Table of Contents if it exists
         const contentControls = context.document.contentControls;
         context.load(contentControls, "items");
         await context.sync();
-
+        
         console.log(`Found ${contentControls.items.length} content controls`);
-
+        
+        // Look for TOC content controls
         let foundTOC = false;
         for (const control of contentControls.items) {
-          context.load(control, "type, title, text, tag");
+          context.load(control, "type, title, text");
         }
         await context.sync();
-
-        // Look for TOC content controls
+        
         for (const control of contentControls.items) {
-          const title = control.title ? control.title.toLowerCase() : "";
-          const tag = control.tag ? control.tag.toLowerCase() : "";
-
-          if (
-            (title.includes("table") && title.includes("contents")) ||
-            title.includes("toc") ||
-            tag.includes("toc") ||
-            (control.type === "RichText" && control.text && control.text.includes("Contents"))
-          ) {
+          if (control.title && control.title.toLowerCase().includes('table') && control.title.toLowerCase().includes('contents')) {
             console.log("Found existing TOC content control!");
-            const tocText = control.text || "";
-
-            // Parse the existing TOC
-            const lines = tocText.split("\n");
+            const tocText = control.text || '';
+            // Parse the existing TOC (basic approach)
+            const lines = tocText.split('\n');
             lines.forEach((line, index) => {
               const trimmed = line.trim();
-              if (trimmed && !trimmed.match(/^\d+$/) && trimmed.length > 1 && !trimmed.includes("Contents")) {
-                // Better level detection based on formatting
-                const leadingSpaces = line.length - line.trimStart().length;
-                const level = Math.min(Math.floor(leadingSpaces / 4) + 1, 6); // Convert spaces to heading level
-
+              if (trimmed && !trimmed.match(/^\d+$/) && trimmed.length > 1) {
+                // Estimate level based on indentation or content
+                const level = line.length - line.trimStart().length > 10 ? 2 : 1;
                 tocItems.push({
                   text: trimmed,
                   level: level,
                   style: `Heading ${level}`,
-                  index: tocItems.length,
+                  index: tocItems.length
                 });
               }
             });
@@ -104,25 +93,36 @@ export async function getTableOfContents() {
             break;
           }
         }
-
-        // Method 2: If no TOC found, scan for actual heading styles efficiently
+        
         if (!foundTOC) {
-          console.log("No existing TOC found, scanning for heading styles...");
+          console.log("No existing TOC found, scanning document structure...");
+          // Fallback: Scan document more efficiently
           await scanForHeadingStyles(context, tocItems);
         }
+        
       } catch (contentControlError) {
-        console.warn("Content control approach failed, scanning for headings:", contentControlError);
+        console.warn("Content control approach failed, using fallback:", contentControlError);
         await scanForHeadingStyles(context, tocItems);
       }
-
+      
       console.log(`Found ${tocItems.length} headings total`);
-
+      
       // Store TOC data
       currentTocItems = tocItems;
       displayTableOfContents(currentTocItems);
+      
     } catch (error) {
       console.error("Error getting table of contents:", error);
-      document.getElementById("toc-content").innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
+      console.error("Error details:", {
+        name: error.name,
+        message: error.message,
+        code: error.code,
+        traceMessages: error.traceMessages
+      });
+      
+      document.getElementById("toc-content").innerHTML = 
+        `<p style="color: red;">Error: ${error.message}</p>
+         <p style="color: red; font-size: 12px;">Details: ${error.name} (${error.code})</p>`;
       document.getElementById("toc-section").style.display = "block";
     }
   });
