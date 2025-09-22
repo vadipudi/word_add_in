@@ -26,7 +26,7 @@
         <h1 class="ms-font-su">Welcome</h1>
     </header>
     <section id="sideload-msg" class="ms-welcome__main">
-        <h2 class="ms-font-xl">Please <a target="_blank" href="https://learn.microsoft.com/office/dev/add-ins/testing/test-debug-office-add-ins#sideload-an-office-add-in-for-testing">sideload</a> your add-in to see app body.</h2>
+        <h2 class="ms-font-xl">Please <a target="_blank" href="https://learn.microsoft.com/office/dev/add-ins/testing/test-debug-office-add-ins#sideload-an-office-add-in-for-testing" rel="noopener noreferrer">sideload</a> your add-in to see app body.</h2>
     </section>
     <main id="app-body" class="ms-welcome__main" style="display: none;">
         <h2 class="ms-font-xl">Document Analysis Tool</h2>
@@ -89,13 +89,13 @@
 
         <!-- API Response Display -->
         <div id="api-section" style="margin: 20px 0; display: none;">
-            <h3 class="ms-font-l">🌐 AWS API Response - GetDraftModelCollapse</h3>
+            <h3 class="ms-font-l">🌐 AWS API Response - /draft/getAll/</h3>
             <div class="ms-bgColor-neutralLight" style="padding: 10px; border-radius: 4px;">
                 <p><strong>Status:</strong> <span id="api-status">Not tested</span></p>
-                <p><strong>Endpoint:</strong> <span id="api-endpoint">GetDraftModelCollapse (draft with content, logs and comments)</span></p>
+                <p><strong>Endpoint:</strong> <span id="api-endpoint">/draft/getAll/ (POST with JSON body)</span></p>
                 <div style="margin-top: 10px;">
                     <strong>Response:</strong>
-                    <pre id="api-response" style="background: #f4f4f4; padding: 10px; border-radius: 4px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; font-size: 12px; margin-top: 5px;">Click "Test AWS API" to get draft model...</pre>
+                    <pre id="api-response" style="background: #f4f4f4; padding: 10px; border-radius: 4px; max-height: 200px; overflow-y: auto; white-space: pre-wrap; font-size: 12px; margin-top: 5px;">Click "Get Draft Model" to retrieve all drafts...</pre>
                 </div>
             </div>
         </div>

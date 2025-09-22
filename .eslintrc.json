@@ -4,5 +4,21 @@
   ],
   "extends": [
     "plugin:office-addins/recommended"
-  ]
+  ],
+  "env": {
+    "browser": true,
+    "es6": true,
+    "node": true
+  },
+  "globals": {
+    "Office": "readonly",
+    "Word": "readonly"
+  },
+  "rules": {
+    "no-console": "off",
+    "no-unused-vars": "warn",
+    "no-debugger": "warn",
+    "office-addins/no-context-sync-in-loop": "warn",
+    "office-addins/no-navigational-load": "warn"
+  }
 }
