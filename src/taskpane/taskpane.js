@@ -22,6 +22,7 @@ Office.onReady((info) => {
     const selectedStyle = document.getElementById("sectionHeadingStyle").value;
     getCurrentSection(selectedStyle);
   };
+  document.getElementById("testApi").onclick = testAwsApi;
     
     // Set up auto-tracking checkbox
     document.getElementById("autoTrack").onchange = toggleAutoTracking;
@@ -199,6 +200,65 @@ export async function testMinimal() {
         `<p style="color: red;">❌ Minimal test failed: ${error.message}</p>`;
     }
   });
+}
+
+// Test AWS API function
+export async function testAwsApi() {
+  try {
+    console.log("Testing AWS API endpoint...");
+    
+    // Show the API section
+    document.getElementById("api-section").style.display = "block";
+    document.getElementById("api-status").textContent = "Testing...";
+    document.getElementById("api-response").textContent = "Making request...";
+    
+    const apiUrl = "https://k43riamgd3.execute-api.us-east-2.amazonaws.com/docs";
+    
+    // Make the API call
+    const response = await fetch(apiUrl, {
+      method: 'GET',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+      },
+      // Add CORS mode if needed
+      mode: 'cors'
+    });
+    
+    console.log("API Response status:", response.status);
+    console.log("API Response headers:", response.headers);
+    
+    // Update status
+    document.getElementById("api-status").textContent = `Status: ${response.status} ${response.statusText}`;
+    
+    // Try to get response content
+    let responseText;
+    try {
+      // Try JSON first
+      responseText = await response.json();
+      document.getElementById("api-response").textContent = JSON.stringify(responseText, null, 2);
+    } catch (jsonError) {
+      // If not JSON, get as text
+      responseText = await response.text();
+      document.getElementById("api-response").textContent = responseText;
+    }
+    
+    console.log("API Response data:", responseText);
+    
+    if (response.ok) {
+      document.getElementById("api-status").style.color = "green";
+    } else {
+      document.getElementById("api-status").style.color = "orange";
+    }
+    
+  } catch (error) {
+    console.error("Error calling AWS API:", error);
+    
+    document.getElementById("api-section").style.display = "block";
+    document.getElementById("api-status").textContent = `Error: ${error.message}`;
+    document.getElementById("api-status").style.color = "red";
+    document.getElementById("api-response").textContent = `Error details:\n${error.name}: ${error.message}\n\nThis might be due to:\n- CORS policy restrictions\n- Network connectivity issues\n- API endpoint not available\n- Authentication required`;
+  }
 }
 
 // Simplified heading level function
