@@ -5,7 +5,7 @@ const CopyWebpackPlugin = require("copy-webpack-plugin");
 const HtmlWebpackPlugin = require("html-webpack-plugin");
 
 const urlDev = "https://localhost:3000/";
-const urlProd = "https://vadipudi.github.io/word_add_in/word-get-started-with-dev-kit/"; // GitHub Pages deployment location
+const urlProd = "https://vadipudi.github.io/word_add_in/"; // GitHub Pages deployment location
 
 async function getHttpsOptions() {
   const httpsOptions = await devCerts.getHttpsServerOptions();
