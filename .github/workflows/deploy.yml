@@ -40,10 +40,15 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v4
       
+      - name: Create deployment structure
+        run: |
+          mkdir -p ../deploy/word-get-started-with-dev-kit
+          cp -r dist/* ../deploy/word-get-started-with-dev-kit/
+      
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: './word-get-started-with-dev-kit/dist'
+          path: './deploy'
   
   deploy:
     environment:
