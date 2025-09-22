@@ -97,7 +97,7 @@ b {
     background-color: #f3f2f1;
 }
 
-#sharepoint-section, #toc-section {
+#sharepoint-section, #toc-section, #position-section {
     border: 1px solid #edebe9;
     border-radius: 6px;
     padding: 15px;
@@ -118,3 +118,30 @@ b {
 .level-3 { border-left-color: #b146c2 !important; }
 .level-4 { border-left-color: #00bcf2 !important; }
 .level-5 { border-left-color: #8764b8 !important; }
+
+/* Current section highlighting */
+.toc-item.current-section {
+    background-color: #fff4ce !important;
+    border: 2px solid #ffb900 !important;
+    font-weight: bold !important;
+    box-shadow: 0 2px 8px rgba(255, 185, 0, 0.3);
+    animation: pulse 0.5s ease-in-out;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.02); }
+    100% { transform: scale(1); }
+}
+
+/* Auto-tracking indicator */
+#autoTrack:checked + span {
+    color: #107c10;
+    font-weight: bold;
+}
+
+/* Position section styling */
+#position-section {
+    background: linear-gradient(135deg, #f3f2f1 0%, #faf9f8 100%);
+    border-left: 4px solid #0078d4;
+}

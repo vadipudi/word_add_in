@@ -39,6 +39,25 @@
             <div role="button" id="getSharePointPath" class="ms-welcome__action ms-Button ms-Button--hero ms-font-m" style="margin: 10px 0;">
                 <span class="ms-Button-label">Get SharePoint Path</span>
             </div>
+            <div role="button" id="getCurrentSection" class="ms-welcome__action ms-Button ms-Button--hero ms-font-m" style="margin: 10px 0;">
+                <span class="ms-Button-label">Find Current Section</span>
+            </div>
+            <div style="margin: 10px 0;">
+                <label style="display: flex; align-items: center;">
+                    <input type="checkbox" id="autoTrack" style="margin-right: 8px;">
+                    <span class="ms-font-s">Auto-track cursor position</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Current Position Display -->
+        <div id="position-section" style="margin: 20px 0; display: none;">
+            <h3 class="ms-font-l">📍 Current Position</h3>
+            <div class="ms-bgColor-neutralLight" style="padding: 10px; border-radius: 4px;">
+                <p><strong>Current Section:</strong> <span id="current-section">Not detected</span></p>
+                <p><strong>Page/Position:</strong> <span id="current-position">Unknown</span></p>
+                <p><strong>Cursor Location:</strong> <span id="cursor-info">Not tracked</span></p>
+            </div>
         </div>
 
         <!-- SharePoint Path Display -->

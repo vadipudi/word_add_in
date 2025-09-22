@@ -5,6 +5,10 @@
 
 /* global document, Office, Word */
 
+// Global variables for tracking
+let currentTocItems = [];
+let autoTrackInterval = null;
+
 Office.onReady((info) => {
   if (info.host === Office.HostType.Word) {
     document.getElementById("sideload-msg").style.display = "none";
@@ -14,6 +18,10 @@ Office.onReady((info) => {
     document.getElementById("run").onclick = run;
     document.getElementById("getToc").onclick = getTableOfContents;
     document.getElementById("getSharePointPath").onclick = getSharePointPath;
+    document.getElementById("getCurrentSection").onclick = getCurrentSection;
+    
+    // Set up auto-tracking checkbox
+    document.getElementById("autoTrack").onchange = toggleAutoTracking;
   }
 });
 
@@ -55,16 +63,33 @@ export async function getTableOfContents() {
           const text = paragraph.text.trim();
           
           if (text) {
+            // Load range information for position tracking
+            context.load(paragraph.range, "start, end");
+            
             tocItems.push({
               text: text,
               level: level,
-              style: paragraph.styleBuiltIn
+              style: paragraph.styleBuiltIn,
+              paragraph: paragraph,
+              index: i
             });
           }
         }
       }
 
-      displayTableOfContents(tocItems);
+      await context.sync();
+      
+      // Store TOC items with position data for tracking
+      currentTocItems = tocItems.map(item => ({
+        text: item.text,
+        level: item.level,
+        style: item.style,
+        start: item.paragraph.range.start,
+        end: item.paragraph.range.end,
+        index: item.index
+      }));
+
+      displayTableOfContents(currentTocItems);
       
     } catch (error) {
       console.error("Error getting table of contents:", error);
@@ -160,11 +185,13 @@ function displayTableOfContents(tocItems) {
       
       html += `
         <li style="margin-left: ${indent}px; margin-bottom: 8px;">
-          <div class="toc-item ${levelClass}" style="
+          <div class="toc-item ${levelClass}" data-index="${index}" style="
             padding: 5px; 
             border-left: 3px solid ${getLevelColor(item.level)}; 
             background: ${index % 2 === 0 ? '#f9f9f9' : '#ffffff'};
             border-radius: 3px;
+            cursor: pointer;
+            transition: all 0.2s ease;
           ">
             <strong>H${item.level}:</strong> ${escapeHtml(item.text)}
             <br><small style="color: #666;">${item.style || 'Unknown style'}</small>
@@ -175,9 +202,40 @@ function displayTableOfContents(tocItems) {
     
     html += "</ul>";
     tocContainer.innerHTML = html;
+    
+    // Add click handlers to TOC items for navigation
+    const tocItemElements = tocContainer.querySelectorAll('.toc-item');
+    tocItemElements.forEach((element, index) => {
+      element.onclick = () => navigateToSection(index);
+    });
   }
   
   tocSection.style.display = "block";
+}
+
+// Navigate to a specific section
+async function navigateToSection(index) {
+  if (index < 0 || index >= currentTocItems.length) return;
+  
+  return Word.run(async (context) => {
+    try {
+      // Create a range at the heading position
+      const range = context.document.body.getRange();
+      range.start = currentTocItems[index].start;
+      range.end = currentTocItems[index].start + 1;
+      
+      // Select the range to navigate to it
+      range.select();
+      
+      await context.sync();
+      
+      // Update current section display
+      setTimeout(() => getCurrentSection(), 500);
+      
+    } catch (error) {
+      console.error("Error navigating to section:", error);
+    }
+  });
 }
 
 // Update SharePoint display
@@ -202,6 +260,132 @@ function updateSharePointDisplay(documentUrl, properties) {
     nameElement.textContent = properties.title || "Unknown";
     statusElement.textContent = "Not in SharePoint or unable to detect";
     statusElement.style.color = "orange";
+  }
+}
+
+// Get Current Section
+export async function getCurrentSection() {
+  return Word.run(async (context) => {
+    try {
+      // Show position section
+      document.getElementById("position-section").style.display = "block";
+      document.getElementById("current-section").textContent = "Detecting...";
+      
+      // Get current selection/cursor position
+      const selection = context.document.getSelection();
+      context.load(selection, "start, end, text");
+      
+      await context.sync();
+      
+      const currentPosition = selection.start;
+      
+      // Find which section the cursor is in
+      const currentSection = findCurrentSection(currentPosition);
+      
+      // Update display
+      updateCurrentPositionDisplay(currentSection, currentPosition, selection.text);
+      
+      // Highlight current section in TOC
+      highlightCurrentSectionInTOC(currentSection);
+      
+    } catch (error) {
+      console.error("Error getting current section:", error);
+      document.getElementById("current-section").textContent = `Error: ${error.message}`;
+    }
+  });
+}
+
+// Toggle auto-tracking
+function toggleAutoTracking() {
+  const checkbox = document.getElementById("autoTrack");
+  
+  if (checkbox.checked) {
+    // Start auto-tracking
+    autoTrackInterval = setInterval(async () => {
+      if (currentTocItems.length > 0) {
+        await getCurrentSection();
+      }
+    }, 2000); // Check every 2 seconds
+    
+    document.getElementById("position-section").style.display = "block";
+  } else {
+    // Stop auto-tracking
+    if (autoTrackInterval) {
+      clearInterval(autoTrackInterval);
+      autoTrackInterval = null;
+    }
+  }
+}
+
+// Find which section the current position is in
+function findCurrentSection(currentPosition) {
+  if (currentTocItems.length === 0) {
+    return { text: "No TOC available", level: 0, index: -1 };
+  }
+  
+  // Find the section that contains the current position
+  let currentSection = null;
+  
+  for (let i = 0; i < currentTocItems.length; i++) {
+    const item = currentTocItems[i];
+    
+    // If cursor is after this heading
+    if (currentPosition >= item.start) {
+      // Check if there's a next heading
+      const nextItem = currentTocItems[i + 1];
+      
+      // If this is the last heading or cursor is before next heading
+      if (!nextItem || currentPosition < nextItem.start) {
+        currentSection = {
+          text: item.text,
+          level: item.level,
+          style: item.style,
+          index: i,
+          start: item.start,
+          end: item.end
+        };
+        break;
+      }
+    }
+  }
+  
+  return currentSection || { text: "Before first heading", level: 0, index: -1 };
+}
+
+// Update current position display
+function updateCurrentPositionDisplay(section, position, selectedText) {
+  document.getElementById("current-section").textContent = section.text || "Unknown";
+  document.getElementById("current-position").textContent = `Position: ${position}`;
+  
+  let cursorInfo = `Position ${position}`;
+  if (selectedText && selectedText.trim()) {
+    cursorInfo += ` (Selected: "${selectedText.substring(0, 50)}${selectedText.length > 50 ? '...' : ''}")`;
+  }
+  document.getElementById("cursor-info").textContent = cursorInfo;
+}
+
+// Highlight current section in TOC
+function highlightCurrentSectionInTOC(currentSection) {
+  // Remove previous highlights
+  const tocItems = document.querySelectorAll('.toc-item');
+  tocItems.forEach(item => {
+    item.classList.remove('current-section');
+    item.style.backgroundColor = '';
+    item.style.fontWeight = '';
+  });
+  
+  // Highlight current section
+  if (currentSection && currentSection.index >= 0) {
+    const currentItem = tocItems[currentSection.index];
+    if (currentItem) {
+      currentItem.classList.add('current-section');
+      currentItem.style.backgroundColor = '#fff4ce';
+      currentItem.style.fontWeight = 'bold';
+      currentItem.style.border = '2px solid #ffb900';
+      
+      // Scroll to current item in TOC
+      currentItem.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }
 }
 
