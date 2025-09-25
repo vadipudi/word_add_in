@@ -42,11 +42,11 @@ export async function run() {
   });
 }
 
-// Get Table of Contents - most efficient approach using content controls
+// Get Table of Contents - using content controls approach
 export async function getTableOfContents() {
   return Word.run(async (context) => {
     try {
-      console.log("Starting getTableOfContents - using content controls approach...");
+      console.log("Starting getTableOfContents with content controls...");
       
       // Clear previous results
       currentTocItems = [];
@@ -55,77 +55,134 @@ export async function getTableOfContents() {
       
       const tocItems = [];
       
+      // Try content controls first
       try {
-        // Method 1: Try to get built-in Table of Contents if it exists
+        console.log("Checking for content controls...");
         const contentControls = context.document.contentControls;
         context.load(contentControls, "items");
         await context.sync();
         
         console.log(`Found ${contentControls.items.length} content controls`);
         
-        // Look for TOC content controls
-        let foundTOC = false;
-        for (const control of contentControls.items) {
-          context.load(control, "type, title, text");
+        if (contentControls.items.length > 0) {
+          // Load content control properties
+          for (let i = 0; i < contentControls.items.length; i++) {
+            const control = contentControls.items[i];
+            context.load(control, "text, title, tag, type");
+          }
+          await context.sync();
+          
+          // Process content controls for headings
+          for (let i = 0; i < contentControls.items.length; i++) {
+            const control = contentControls.items[i];
+            const text = control.text ? control.text.trim() : "";
+            const title = control.title || "";
+            const tag = control.tag || "";
+            
+            // Check if this content control represents a heading
+            if (
+              text &&
+              (title.toLowerCase().includes("heading") ||
+                tag.toLowerCase().includes("heading") ||
+                title.toLowerCase().includes("title"))
+            ) {
+              const level = extractLevelFromControl(title, tag);
+              
+              tocItems.push({
+                text: text,
+                level: level,
+                style: title || tag || "Content Control",
+                index: tocItems.length,
+                type: "contentControl",
+              });
+              
+              console.log(`Found heading content control: "${text}" (${title || tag})`);
+            }
+          }
+        }
+      } catch (contentControlError) {
+        console.warn("Content controls approach failed:", contentControlError);
+      }
+      
+      // Fallback to paragraph scanning if no headings found in content controls
+      if (tocItems.length === 0) {
+        console.log("No headings found in content controls, falling back to paragraph scanning...");
+        
+        // Get all paragraphs
+        const paragraphs = context.document.body.paragraphs;
+        context.load(paragraphs, "items");
+        await context.sync();
+        
+        console.log(`Found ${paragraphs.items.length} paragraphs total`);
+        
+        // Parse ALL paragraphs to find headings
+        for (let i = 0; i < paragraphs.items.length; i++) {
+          const para = paragraphs.items[i];
+          context.load(para, "text, styleBuiltIn");
         }
         await context.sync();
         
-        for (const control of contentControls.items) {
-          if (control.title && control.title.toLowerCase().includes('table') && control.title.toLowerCase().includes('contents')) {
-            console.log("Found existing TOC content control!");
-            const tocText = control.text || '';
-            // Parse the existing TOC (basic approach)
-            const lines = tocText.split('\n');
-            lines.forEach((line, index) => {
-              const trimmed = line.trim();
-              if (trimmed && !trimmed.match(/^\d+$/) && trimmed.length > 1) {
-                // Estimate level based on indentation or content
-                const level = line.length - line.trimStart().length > 10 ? 2 : 1;
-                tocItems.push({
-                  text: trimmed,
-                  level: level,
-                  style: `Heading ${level}`,
-                  index: tocItems.length
-                });
-              }
+        // Process all paragraphs and find headings
+        for (let i = 0; i < paragraphs.items.length; i++) {
+          const para = paragraphs.items[i];
+          const text = para.text ? para.text.trim() : "";
+          const style = para.styleBuiltIn ? para.styleBuiltIn.toString() : "";
+          
+          // Check if this paragraph is a heading
+          if (text && text.length < 200 && (style.includes("Heading") || style === "Title")) {
+            const level = getHeadingLevel(style);
+            
+            tocItems.push({
+              text: text,
+              level: level,
+              style: style,
+              index: tocItems.length,
+              type: "paragraph",
             });
-            foundTOC = true;
-            break;
+            
+            console.log(`Found heading: "${text}" (${style})`);
           }
         }
-        
-        if (!foundTOC) {
-          console.log("No existing TOC found, scanning document structure...");
-          // Fallback: Scan document more efficiently
-          await scanForHeadingStyles(context, tocItems);
-        }
-        
-      } catch (contentControlError) {
-        console.warn("Content control approach failed, using fallback:", contentControlError);
-        await scanForHeadingStyles(context, tocItems);
       }
       
       console.log(`Found ${tocItems.length} headings total`);
       
-      // Store TOC data
+      // Store and display results
       currentTocItems = tocItems;
       displayTableOfContents(currentTocItems);
       
     } catch (error) {
       console.error("Error getting table of contents:", error);
-      console.error("Error details:", {
-        name: error.name,
-        message: error.message,
-        code: error.code,
-        traceMessages: error.traceMessages
-      });
-      
-      document.getElementById("toc-content").innerHTML = 
-        `<p style="color: red;">Error: ${error.message}</p>
-         <p style="color: red; font-size: 12px;">Details: ${error.name} (${error.code})</p>`;
+      document.getElementById("toc-content").innerHTML = `<p style="color: red;">Error: ${error.message}</p>`;
       document.getElementById("toc-section").style.display = "block";
     }
   });
+}
+
+// Simple helper to get heading level from style
+function getHeadingLevel(style) {
+  if (style === "Title") return 0;
+  if (style.includes("Heading")) {
+    const match = style.match(/(\d+)/);
+    return match ? parseInt(match[1]) : 1;
+  }
+  return 1;
+}
+
+// Helper to extract heading level from content control title or tag
+function extractLevelFromControl(title, tag) {
+  const text = (title + " " + tag).toLowerCase();
+  
+  if (text.includes("title")) return 0;
+  
+  // Look for heading numbers
+  const match = text.match(/heading\s*(\d+)|h(\d+)|level\s*(\d+)/);
+  if (match) {
+    const level = parseInt(match[1] || match[2] || match[3]);
+    return level && level > 0 && level < 10 ? level : 1;
+  }
+  
+  return 1;
 }
 
 // Helper function to scan for heading styles efficiently - NO document parsing
@@ -232,7 +289,7 @@ export async function testAwsApi() {
 
     // Parameters for GetDraftModelCollapse
     const params = {
-      key: "d074010377c21837e01f22424d97cc6e",
+      key: "demo_cuvitru",
       base: "usercache",
     };
 
@@ -383,8 +440,8 @@ async function getDocumentUrl() {
   });
 }
 
-// Helper function to determine heading level
-function getHeadingLevel(styleBuiltIn, outlineLevel) {
+// Helper function to determine heading level (extended)
+function getHeadingLevelExtended(styleBuiltIn, outlineLevel) {
   try {
     if (styleBuiltIn) {
       const style = styleBuiltIn.toString();
