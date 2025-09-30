@@ -9,20 +9,60 @@
 let currentTocItems = [];
 let autoTrackInterval = null;
 
+// Enhanced logging function for debugging
+function debugLog(functionName, message, data = null) {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${functionName}: ${message}`;
+  
+  console.log(logMessage);
+  if (data) {
+    console.log("Data:", data);
+  }
+  
+  // Also display in UI for easier debugging
+  const debugElement = document.getElementById("debug-info");
+  if (debugElement) {
+    const logEntry = document.createElement("div");
+    logEntry.style.fontSize = "12px";
+    logEntry.style.color = "#666";
+    logEntry.style.marginBottom = "2px";
+    logEntry.textContent = logMessage;
+    debugElement.appendChild(logEntry);
+    
+    // Keep only last 10 log entries
+    while (debugElement.children.length > 10) {
+      debugElement.removeChild(debugElement.firstChild);
+    }
+  }
+}
+
 Office.onReady((info) => {
   if (info.host === Office.HostType.Word) {
     document.getElementById("sideload-msg").style.display = "none";
     document.getElementById("app-body").style.display = "flex";
 
     // Add event listeners
-    document.getElementById("getToc").onclick = getTableOfContents;
-    document.getElementById("testMinimal").onclick = testMinimal;
-    document.getElementById("getSharePointPath").onclick = getSharePointPath;
+    document.getElementById("getToc").onclick = () => {
+      debugLog("getToc", "Button clicked - starting TOC extraction");
+      getTableOfContents();
+    };
+    document.getElementById("testMinimal").onclick = () => {
+      debugLog("testMinimal", "Button clicked - testing minimal API");
+      testMinimal();
+    };
+    document.getElementById("getSharePointPath").onclick = () => {
+      debugLog("getSharePointPath", "Button clicked - getting SharePoint path");
+      getSharePointPath();
+    };
     document.getElementById("getCurrentSection").onclick = () => {
+      debugLog("getCurrentSection", "Button clicked - getting current section");
       const selectedStyle = document.getElementById("sectionHeadingStyle").value;
       getCurrentSection(selectedStyle);
     };
-    document.getElementById("testApi").onclick = testAwsApi;
+    document.getElementById("testApi").onclick = () => {
+      debugLog("testApi", "Button clicked - testing AWS API");
+      testAwsApi();
+    };
 
     // Set up auto-tracking checkbox
     document.getElementById("autoTrack").onchange = toggleAutoTracking;
@@ -572,47 +612,100 @@ function updateSharePointDisplay(documentUrl, properties) {
   }
 }
 
-// Get Current Section - finds which section the cursor is in based on heading boundaries
+// Get Current Section - finds which section the cursor is in based on content controls or heading boundaries
 export async function getCurrentSection(sectionHeadingStyle = "Heading 1") {
   return Word.run(async (context) => {
     try {
-      console.log(`Finding current section based on ${sectionHeadingStyle} boundaries...`);
+      console.log(`Finding current section using content controls and ${sectionHeadingStyle} boundaries...`);
 
       // Show position section
       document.getElementById("position-section").style.display = "block";
       document.getElementById("current-section").textContent = "Detecting...";
 
-      // Get cursor position
+      // First, check if cursor is inside a content control
       const selection = context.document.getSelection();
-      context.load(selection, "start");
+      context.load(selection, "start,parentContentControl");
       await context.sync();
 
+      const ccs = selection.parentContentControl;
+      if (ccs && ccs.isNullObject === false) {
+        context.load(ccs, "title,tag,id,text");
+        await context.sync();
+      }
+
+      let currentSection = null;
       const cursorPosition = selection.start;
       console.log(`Cursor position: ${cursorPosition}`);
 
-      // Find all headings of the specified level (section boundaries)
-      const sectionHeadings = await findHeadingsByStyle(context, sectionHeadingStyle);
-      console.log(`Found ${sectionHeadings.length} section headings`);
-
-      if (sectionHeadings.length === 0) {
-        document.getElementById("current-section").textContent = `No ${sectionHeadingStyle} found`;
-        document.getElementById("current-position").textContent = "Cannot determine section";
-        document.getElementById(
-          "cursor-info"
-        ).textContent = `Add some ${sectionHeadingStyle} headings to use this feature`;
-        return;
+      // Check if we're inside a content control
+      if (ccs && ccs.isNullObject === false) {
+        console.log("Cursor is inside content control:", ccs.title, ccs.tag, ccs.id);
+        
+        // Check if this content control represents a section/heading
+        const title = ccs.title || "";
+        const tag = ccs.tag || "";
+        const text = ccs.text || "";
+        
+        if (
+          title.toLowerCase().includes("section") ||
+          title.toLowerCase().includes("heading") ||
+          tag.toLowerCase().includes("section") ||
+          tag.toLowerCase().includes("heading") ||
+          title.toLowerCase().includes(sectionHeadingStyle.toLowerCase())
+        ) {
+          currentSection = {
+            title: text.trim() || title || tag || `Content Control ${ccs.id}`,
+            start: cursorPosition,
+            end: cursorPosition,
+            style: `Content Control: ${title || tag}`,
+            type: "contentControl",
+            id: ccs.id,
+          };
+          
+          console.log(`Found section content control: "${currentSection.title}"`);
+        } else {
+          console.log("Content control doesn't appear to be a section heading");
+        }
+      } else {
+        console.log("Cursor is not inside any content control.");
       }
 
-      // Find which section the cursor is in
-      const currentSection = findSectionFromPosition(cursorPosition, sectionHeadings);
+      // If no content control section found, fall back to paragraph-based detection
+      if (!currentSection) {
+        console.log(`Falling back to ${sectionHeadingStyle} paragraph detection...`);
+        
+        // Find all headings of the specified level (section boundaries)
+        const sectionHeadings = await findHeadingsByStyle(context, sectionHeadingStyle);
+        console.log(`Found ${sectionHeadings.length} section headings`);
+
+        if (sectionHeadings.length === 0) {
+          document.getElementById(
+            "current-section"
+          ).textContent = `No ${sectionHeadingStyle} or section content controls found`;
+          document.getElementById("current-position").textContent = "Cannot determine section";
+          document.getElementById(
+            "cursor-info"
+          ).textContent = `Add some ${sectionHeadingStyle} headings or section content controls to use this feature`;
+          return;
+        }
+
+        // Find which section the cursor is in
+        currentSection = findSectionFromPosition(cursorPosition, sectionHeadings);
+      }
 
       // Update display
       if (currentSection) {
-        document.getElementById("current-section").textContent = `Section: ${currentSection.title}`;
+        const sectionType = currentSection.type === "contentControl" ? "Content Control" : "Heading";
+        document.getElementById("current-section").textContent = `Section: ${currentSection.title} (${sectionType})`;
         document.getElementById(
           "current-position"
         ).textContent = `Position: ${cursorPosition} (in ${currentSection.title})`;
-        document.getElementById("cursor-info").textContent = `Section starts at position ${currentSection.start}`;
+        
+        if (currentSection.type === "contentControl") {
+          document.getElementById("cursor-info").textContent = `Inside content control: ${currentSection.style}`;
+        } else {
+          document.getElementById("cursor-info").textContent = `Section starts at position ${currentSection.start}`;
+        }
       } else {
         document.getElementById("current-section").textContent = "Before first section";
         document.getElementById("current-position").textContent = `Position: ${cursorPosition}`;

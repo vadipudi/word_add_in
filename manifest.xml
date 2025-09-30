@@ -4,7 +4,7 @@
   <Version>1.0.0.0</Version>
   <ProviderName>Contoso</ProviderName>
   <DefaultLocale>en-US</DefaultLocale>
-  <DisplayName DefaultValue="Word-HelloWorld-Taskpane-JS"/>
+  <DisplayName DefaultValue="Word Document Assistant"/>
   <Description DefaultValue="A template to get started."/>
   <IconUrl DefaultValue="https://vadipudi.github.io/word_add_in/assets/icon-32.png"/>
   <HighResolutionIconUrl DefaultValue="https://vadipudi.github.io/word_add_in/assets/icon-64.png"/>
